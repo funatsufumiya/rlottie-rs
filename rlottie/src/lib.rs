@@ -177,8 +177,11 @@ impl AsRef<[u8]> for Surface {
 	}
 }
 
+pub struct WrappedAnimationPointer(NonNull<Lottie_Animation_S>);
+unsafe impl Send for WrappedAnimationPointer {}
+
 /// A lottie animation.
-pub struct Animation(Arc<Mutex<NonNull<Lottie_Animation_S>>>);
+pub struct Animation(Arc<Mutex<WrappedAnimationPointer>>);
 
 impl Debug for Animation {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -189,20 +192,20 @@ impl Debug for Animation {
 impl Drop for Animation {
 	fn drop(&mut self) {
 		unsafe {
-			lottie_animation_destroy(self.0.lock().unwrap().as_ptr());
+			lottie_animation_destroy(self.0.lock().unwrap().0.as_ptr());
 		}
 	}
 }
 
 impl Animation {
 	fn get_ptr (&self) -> *mut Lottie_Animation_S {
-		self.0.lock().unwrap().as_ptr()
+		self.0.lock().unwrap().0.as_ptr()
 	}
 
 	fn from_ptr(ptr: *mut Lottie_Animation_S) -> Option<Self> {
 		(!ptr.is_null()).then(|| {
 			// Safety: This is only called if ptr is non null
-			Self(unsafe { Arc::new(Mutex::new(NonNull::new_unchecked(ptr))) })
+			Self(unsafe { Arc::new(Mutex::new(WrappedAnimationPointer(NonNull::new_unchecked(ptr)))) })
 		})
 	}
 
