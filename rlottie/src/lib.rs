@@ -36,7 +36,7 @@ use std::{
 	os::unix::ffi::OsStrExt,
 	path::Path,
 	ptr::NonNull,
-	slice
+	slice, sync::{Arc, Mutex}
 };
 
 pub type Bgra<T = u8> = BGRA<T>;
@@ -178,7 +178,7 @@ impl AsRef<[u8]> for Surface {
 }
 
 /// A lottie animation.
-pub struct Animation(NonNull<Lottie_Animation_S>);
+pub struct Animation(Arc<Mutex<NonNull<Lottie_Animation_S>>>);
 
 impl Debug for Animation {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -189,16 +189,20 @@ impl Debug for Animation {
 impl Drop for Animation {
 	fn drop(&mut self) {
 		unsafe {
-			lottie_animation_destroy(self.0.as_ptr());
+			lottie_animation_destroy(self.0.lock().unwrap().as_ptr());
 		}
 	}
 }
 
 impl Animation {
+	fn get_ptr (&self) -> *mut Lottie_Animation_S {
+		self.0.lock().unwrap().as_ptr()
+	}
+
 	fn from_ptr(ptr: *mut Lottie_Animation_S) -> Option<Self> {
 		(!ptr.is_null()).then(|| {
 			// Safety: This is only called if ptr is non null
-			Self(unsafe { NonNull::new_unchecked(ptr) })
+			Self(unsafe { Arc::new(Mutex::new(NonNull::new_unchecked(ptr))) })
 		})
 	}
 
@@ -255,7 +259,7 @@ impl Animation {
 		};
 		unsafe {
 			lottie_animation_get_size(
-				self.0.as_ptr(),
+				self.get_ptr(),
 				&mut size.width,
 				&mut size.height
 			);
@@ -265,29 +269,29 @@ impl Animation {
 
 	/// Return the total duration of this animation in seconds.
 	pub fn duration(&self) -> f64 {
-		unsafe { lottie_animation_get_duration(self.0.as_ptr()) }
+		unsafe { lottie_animation_get_duration(self.get_ptr()) }
 	}
 
 	/// Return the total number of frames in this animation.
 	pub fn totalframe(&self) -> usize {
-		unsafe { lottie_animation_get_totalframe(self.0.as_ptr()) }
+		unsafe { lottie_animation_get_totalframe(self.get_ptr()) }
 	}
 
 	/// Return the default framerate of this animation.
 	pub fn framerate(&self) -> f64 {
-		unsafe { lottie_animation_get_framerate(self.0.as_ptr()) }
+		unsafe { lottie_animation_get_framerate(self.get_ptr()) }
 	}
 
 	/// Maps position to frame number and returns it.
 	pub fn frame_at_pos(&self, pos: f32) -> usize {
-		unsafe { lottie_animation_get_frame_at_pos(self.0.as_ptr(), pos) }
+		unsafe { lottie_animation_get_frame_at_pos(self.get_ptr(), pos) }
 	}
 
 	/// Render the contents of a frame onto the surface.
 	pub fn render(&mut self, frame_num: usize, surface: &mut Surface) {
 		unsafe {
 			lottie_animation_render(
-				self.0.as_ptr(),
+				self.get_ptr(),
 				frame_num,
 				surface.as_mut_ptr(),
 				surface.width(),
@@ -304,7 +308,7 @@ impl Animation {
 		let RGB { r, g, b } = color;
 		unsafe {
 			lottie_animation_property_override(
-                self.0.as_ptr(),
+                self.get_ptr(),
                 rlottie_sys::Lottie_Animation_Property::LOTTIE_ANIMATION_PROPERTY_FILLCOLOR,
                 keypath.as_ptr(),
                 r,
@@ -322,7 +326,7 @@ impl Animation {
 		let keypath = CString::new(keypath).unwrap();
 		unsafe {
 			lottie_animation_property_override(
-                self.0.as_ptr(),
+                self.get_ptr(),
                 rlottie_sys::Lottie_Animation_Property::LOTTIE_ANIMATION_PROPERTY_FILLOPACITY,
                 keypath.as_ptr(),
                 opacity,
@@ -336,7 +340,7 @@ impl Animation {
 		let RGB { r, g, b } = color;
 		unsafe {
 			lottie_animation_property_override(
-                self.0.as_ptr(),
+                self.get_ptr(),
                 rlottie_sys::Lottie_Animation_Property::LOTTIE_ANIMATION_PROPERTY_STROKECOLOR,
                 keypath.as_ptr(),
                 r,
@@ -354,7 +358,7 @@ impl Animation {
 		let keypath = CString::new(keypath).unwrap();
 		unsafe {
 			lottie_animation_property_override(
-                self.0.as_ptr(),
+                self.get_ptr(),
                 rlottie_sys::Lottie_Animation_Property::LOTTIE_ANIMATION_PROPERTY_STROKEOPACITY,
                 keypath.as_ptr(),
                 opacity,
@@ -366,7 +370,7 @@ impl Animation {
 		let keypath = CString::new(keypath).unwrap();
 		unsafe {
 			lottie_animation_property_override(
-                self.0.as_ptr(),
+                self.get_ptr(),
                 rlottie_sys::Lottie_Animation_Property::LOTTIE_ANIMATION_PROPERTY_STROKEWIDTH,
                 keypath.as_ptr(),
                 width,
@@ -378,7 +382,7 @@ impl Animation {
 		let keypath = CString::new(keypath).unwrap();
 		unsafe {
 			lottie_animation_property_override(
-                self.0.as_ptr(),
+                self.get_ptr(),
                 rlottie_sys::Lottie_Animation_Property::LOTTIE_ANIMATION_PROPERTY_TR_POSITION,
                 keypath.as_ptr(),
                 x,
@@ -391,7 +395,7 @@ impl Animation {
 		let keypath = CString::new(keypath).unwrap();
 		unsafe {
 			lottie_animation_property_override(
-                self.0.as_ptr(),
+                self.get_ptr(),
                 rlottie_sys::Lottie_Animation_Property::LOTTIE_ANIMATION_PROPERTY_TR_SCALE,
                 keypath.as_ptr(),
                 width,
@@ -404,7 +408,7 @@ impl Animation {
 		let keypath = CString::new(keypath).unwrap();
 		unsafe {
 			lottie_animation_property_override(
-                self.0.as_ptr(),
+                self.get_ptr(),
                 rlottie_sys::Lottie_Animation_Property::LOTTIE_ANIMATION_PROPERTY_TR_ROTATION,
                 keypath.as_ptr(),
                 rotation,
